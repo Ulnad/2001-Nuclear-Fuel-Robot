@@ -10,8 +10,8 @@ int lineLeft = A1;
 int lineRight = A2;
 int lineBack = A3;
 int pot = A4;
-int  bumpSwitch = 22;
-int black = 400;
+int  bumpSwitch = 29;
+int black = 700;
 
 static enum runStates {decideNextState, determineBluetooth, navigateReactor, navigateDump, navigateNewRod, pickUp, putDown, returnRod, getNewRod, finished}
 runState;
@@ -19,11 +19,14 @@ runState;
 
 void setup() {
   // put your setup code here, to run once:
-  pinMode(bumpSwitch, INPUT);
+  pinMode(bumpSwitch, INPUT_PULLUP);
   leftmotor.attach(11, 1000, 2000); // left drive motor pin#, pulse time for 0,pulse time for 180
   rightmotor.attach(10, 1000, 2000); // right drive motor pin#, pulse time for 0,pulse time for 180
   arm.attach(9, 1000, 2000);
   gripper.attach(4, 1000, 2000);
+  Serial.begin(9600);
+  runState = navigateReactor;
+
 }
 
 void runRobot() {
@@ -34,38 +37,74 @@ void runRobot() {
     case determineBluetooth:
 
       break;
-    case naviateReactor:
+    case navigateReactor:
+      lineFollow();
+      if (digitalRead(bumpSwitch) == LOW) {
+        stopMotors();
+        runState = pickUp;
+      }
+      break;
+    case navigateDump:
 
       break;
-      case navigateDump:
+    case navigateNewRod:
 
       break;
-      case navigateNewRod:
+    case pickUp:
 
       break;
-      case pickUp:
+    case putDown:
 
       break;
-      case putDown:
-
-      break
-      case returnRod:
+    case returnRod:
 
       break;
-      case getNewRod:
+    case getNewRod:
 
       break;
-      case finished:
+    case finished:
 
       break;
   }
 
 }
 void loop() {
-  runRobot();
+
+
+runRobot();
+
+
 }
 
-void lineFollow(){
-  if
+void lineFollow() {
+  if ((analogRead(lineLeft) > black) && (analogRead(lineRight) < black)) {
+    driveLeft();
+  }
+  else if ((analogRead(lineRight) > black) && (analogRead(lineLeft) < black)) {
+    driveRight();
+  }
+  else {
+    driveStraight();
+  }
+}
+
+void driveStraight() {
+  leftmotor.write(180);
+  rightmotor.write(0);
+}
+
+void driveLeft() {
+  leftmotor.write(90);
+  rightmotor.write(0);
+}
+
+void driveRight() {
+  leftmotor.write(180);
+  rightmotor.write(90);
+}
+
+void stopMotors() {
+  leftmotor.write(90);
+  rightmotor.write(90);
 }
 
