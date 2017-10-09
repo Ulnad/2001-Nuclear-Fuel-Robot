@@ -1,5 +1,5 @@
 #include "Arduino.h"
-#include <Messages.h>
+#include "Messages.h"
 
 Messages msg;
 unsigned long timeForHeartbeat;
@@ -17,7 +17,7 @@ unsigned long timeForHeartbeat;
  * Initialize the messages class and the debug serial port
  */
 void setup() {
-  Serial.begin(115200;
+  Serial.begin(115200);
   Serial.println("Starting");
   msg.setup();
   timeForHeartbeat = millis() + 1000;
@@ -38,6 +38,9 @@ void setup() {
 void loop() {
   if (msg.read()) {
 	  msg.printMessage();
+    if(msg.isStopped()){
+      Serial.println("ROBOT STOPPED");
+    }
   }
   if (millis() > timeForHeartbeat) {
     timeForHeartbeat = millis() + 1000;

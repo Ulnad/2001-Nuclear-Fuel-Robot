@@ -86,3 +86,8 @@ bool Messages::read() {
 	}
 	return false;
 }
+
+unsigned char Messages::getStorageAvailability(){
+  return kStorageAvailability;
+}
+

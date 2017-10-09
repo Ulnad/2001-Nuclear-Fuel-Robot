@@ -45,6 +45,7 @@ public:
 	bool read();
 	void setup();
 	void printMessage();
+  unsigned char getStorageAvailability();
 
 private:
 	bool stopped;
