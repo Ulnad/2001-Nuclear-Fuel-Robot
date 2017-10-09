@@ -7,9 +7,14 @@ Servo leftmotor; // Servo object
 Servo arm;
 Servo gripper;
 
+bool backOnWhite = true;
 bool turnedAround = false;
 bool grabbed = false;
+bool intersectionFound = false;
+bool turned90 = false;
+
 int n;
+int desiredDump = 4;
 int lineCounter = A0;
 int lineLeft = A1;
 int lineRight = A2;
@@ -17,7 +22,7 @@ int lineBack = A3;
 int pot = A4;
 int  bumpSwitch = 29;
 int black = 700;
-int armBack = 26;
+int armBack = 38;
 int armDown = 385;
 int Kp = 1000;
 int Ki = 0;
@@ -28,10 +33,12 @@ PID pid(&inputValue, &outputValue, &setpoint, Kp, Ki, Kd, DIRECT);
 
 static enum runStates {decideNextState, determineBluetooth, navigateReactor, navigateDump, navigateNewRod, pickUp, putDown, returnRod, getNewRod, finished}
 runState;
-static enum turnAroundStates {backUp, skipLine, findLine}
+static enum turnAroundStates {setDesiredTime, backUp, skipLine, findLine}
 turnAroundState;
 static enum pickupStates {armDownRun, grip, armUp, turnAroundRun}
 pickupState;
+static enum navigateDumpStates {findIntersection, turnToDump, approachDump}
+navigateDumpState;
 
 
 void setup() {
@@ -44,7 +51,7 @@ void setup() {
   Serial.begin(9600);
   runState = navigateReactor;
   pickupState = armDownRun;
-  turnAroundState = backUp;
+  turnAroundState = setDesiredTime;
 
   pid.SetMode(AUTOMATIC);
   pid.SetOutputLimits(-90, 90);
@@ -67,7 +74,7 @@ void runRobot() {
       }
       break;
     case navigateDump:
-
+      navigateDumpFunction();
       break;
     case navigateNewRod:
 
@@ -91,8 +98,8 @@ void runRobot() {
 
 }
 void loop() {
-
   runRobot();
+  //moveToIntersection(4);
   Serial.println(analogRead(pot));
 
 }
@@ -113,10 +120,15 @@ void driveStraight() {
   leftmotor.write(180);
   rightmotor.write(0);
 }
-void driveTurnCenter() {
+void driveTurnCenterRight() {
+
+  leftmotor.write(180);
+  rightmotor.write(180);
+}
+void driveTurnCenterLeft() {
 
   leftmotor.write(0);
-  rightmotor.write(180);
+  rightmotor.write(0);
 }
 void driveBack() {
   leftmotor.write(0);
@@ -145,19 +157,23 @@ void drive(double speed, Servo motor) {
 }
 void turnAround() {
   switch (turnAroundState) {
+    case setDesiredTime:
+      desiredTime = millis() + 1300;
+      turnAroundState = backUp;
+      break;
     case backUp:
-      if (millis < desiredTime) {
+      if (millis() < desiredTime) {
         driveBack();
       }
       else {
         stopMotors();
-        desiredTime = millis() + 300;
+        desiredTime = millis() + 500;
         turnAroundState = skipLine;
       }
       break;
     case skipLine:
-      if (millis < desiredTime) {
-        driveTurnCenter();
+      if (millis() < desiredTime) {
+        driveTurnCenterRight();
       }
       else {
         stopMotors;
@@ -165,16 +181,33 @@ void turnAround() {
       }
       break;
     case findLine:
-      if (analogRead(lineLeft) < black) {
-        driveTurnCenter();
+      if (analogRead(lineRight) < black) {
+        driveTurnCenterRight();
       }
       else {
         stopMotors();
-        turnAroundState = backUp;
+        turnAroundState = setDesiredTime;
         turnedAround = true;
       }
       break;
   }
+}
+void moveToIntersection (int line) {
+  if (n != line) {
+    lineFollow();
+    if (backOnWhite && (analogRead(lineCounter) > black)) {
+      n++;
+      backOnWhite = false;
+    }
+    else if (!backOnWhite && (analogRead(lineCounter) < black)) {
+      backOnWhite = true;
+    }
+  }
+  else {
+    stopMotors();
+    intersectionFound = true;
+  }
+
 }
 void pickupFunction() {
   switch (pickupState) {
@@ -211,52 +244,67 @@ void pickupFunction() {
         drive(-outputValue, arm);
       }
       else {
-        stopMotors();
-        desiredTime = millis() + 300;
-pickupState = turnAroundRun;
+        arm.write(90);
+        pickupState = turnAroundRun;
       }
       break;
     case turnAroundRun:
-if (!turnedAround) {
-         turnAround();
-       }
-       else{
+      if (!turnedAround) {
+        turnAround();
+      }
+      else {
         runState = navigateDump;
         pickupState = armDownRun;
-       }
+      }
       break;
   }
-
-  /* if ((analogRead(pot) < armDown) && (!grabbed)) {
-         setpoint = armDown;
-         inputValue = analogRead(pot);
-         pid.Compute();
-         drive(-outputValue, arm);
-         desiredTime = millis() + 1000;
-         gripper.write(0);
-       }
-       else if (millis() < desiredTime) {
-         arm.write(90);
-         gripper.write(180);
-         grabbed = true;
-       }
-       else if (analogRead(pot) > armBack) {
-         gripper.write(90);
-         setpoint = armBack;
-         inputValue = analogRead(pot);
-         pid.Compute();
-         drive(-outputValue, arm);
-         desiredTime = millis() + 500;
-
-       }
-       else if (!turnedAround) {
-         turnAround();
-       }
-
-       else {
-         runState = navigateDump;
-         turnedAround = false;
-       }
-  */
 }
+
+void navigateDumpFunction() {
+  switch (navigateDumpState) {
+    case findIntersection:
+      if (!intersectionFound) {
+        moveToIntersection(desiredDump);
+      }
+      else {
+        intersectionFound = false;
+        desiredTime = millis() + 300;
+        navigateDumpState = turnToDump;
+      }
+      break;
+    case turnToDump:
+      if (!turned90) {
+        turn90Left();
+      }
+      else {
+        navigateDumpState = approachDump;
+      }
+      break;
+    case approachDump:
+      lineFollow();
+      if (digitalRead(bumpSwitch) == LOW) {
+        stopMotors();
+        navigateDumpState = findIntersection;
+        
+        runState = returnRod;
+      }
+      break;
+
+  }
+
+}
+
+void turn90Left() {
+  if (millis() < desiredTime) {
+    driveTurnCenterLeft();
+  }
+  else if (analogRead(lineLeft) < black) {
+    driveTurnCenterLeft();
+  }
+  else {
+    stopMotors();
+    turned90 = true;
+  }
+}
+
 
