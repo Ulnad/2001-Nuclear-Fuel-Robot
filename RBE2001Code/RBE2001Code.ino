@@ -7,23 +7,38 @@ Servo leftmotor; // Servo object
 Servo arm;
 Servo gripper;
 
+bool dump1 = false;
+bool dump2 = true ;
+bool dump3 = false ;
+bool dump4 = true;
+bool supply1 = false ;
+bool supply2 = false;
+bool supply3 = true;
+bool supply4 = false;
+
+
 bool backOnWhite = true;
 bool turnedAround = false;
 bool grabbed = false;
 bool intersectionFound = false;
 bool turned90 = false;
 
+int dumpToSupplyTurn; //0 is left, 1 is no turn, 2 is right turn
+int dumpToSupplyLineSkips;
+int absDumpToSupplyLineSkips;
 int n;
-int desiredDump = 4;
+int desiredDump;
+int desiredSupply;
 int lineCounter = A0;
 int lineLeft = A1;
 int lineRight = A2;
 int lineBack = A3;
-int pot = A4;
+int pot = A5;
 int  bumpSwitch = 29;
 int black = 700;
 int armBack = 38;
-int armDown = 385;
+int armDown = 400;
+int armInsert = 115;
 int Kp = 1000;
 int Ki = 0;
 int Kd = 0;
@@ -39,6 +54,8 @@ static enum pickupStates {armDownRun, grip, armUp, turnAroundRun}
 pickupState;
 static enum navigateDumpStates {findIntersection, turnToDump, approachDump}
 navigateDumpState;
+static enum returnRodStates {armInsertRun, releaseGrip, armBackRun, turnAroundRunDump}
+returnRodState;
 
 
 void setup() {
@@ -49,9 +66,10 @@ void setup() {
   arm.attach(9, 1000, 2000);
   gripper.attach(4, 1000, 2000);
   Serial.begin(9600);
-  runState = navigateReactor;
+  runState = determineBluetooth;
   pickupState = armDownRun;
   turnAroundState = setDesiredTime;
+  navigateDumpState = findIntersection;
 
   pid.SetMode(AUTOMATIC);
   pid.SetOutputLimits(-90, 90);
@@ -64,9 +82,14 @@ void runRobot() {
 
       break;
     case determineBluetooth:
+desiredDump = 4;
+      setDesiredDumpAndSupply();
+      determineTurnsAndLineSkips();
+
 
       break;
     case navigateReactor:
+   
       lineFollow();
       if (digitalRead(bumpSwitch) == LOW) {
         stopMotors();
@@ -87,6 +110,8 @@ void runRobot() {
       break;
     case returnRod:
 
+    returnRodFunction();
+
       break;
     case getNewRod:
 
@@ -98,9 +123,11 @@ void runRobot() {
 
 }
 void loop() {
+  //gripper.write(60);
   runRobot();
   //moveToIntersection(4);
-  Serial.println(analogRead(pot));
+  //Serial.print(analogRead(pot));
+  //Serial.println(desiredDump);
 
 }
 
@@ -136,13 +163,13 @@ void driveBack() {
 }
 
 void driveLeft() {
-  leftmotor.write(90);
+  leftmotor.write(110);
   rightmotor.write(0);
 }
 
 void driveRight() {
   leftmotor.write(180);
-  rightmotor.write(90);
+  rightmotor.write(70);
 }
 
 void stopMotors() {
@@ -158,7 +185,7 @@ void drive(double speed, Servo motor) {
 void turnAround() {
   switch (turnAroundState) {
     case setDesiredTime:
-      desiredTime = millis() + 1300;
+      desiredTime = millis() + 1350;
       turnAroundState = backUp;
       break;
     case backUp:
@@ -167,7 +194,7 @@ void turnAround() {
       }
       else {
         stopMotors();
-        desiredTime = millis() + 500;
+        desiredTime = millis() + 200;
         turnAroundState = skipLine;
       }
       break;
@@ -217,11 +244,11 @@ void pickupFunction() {
         inputValue = analogRead(pot);
         pid.Compute();
         drive(-outputValue, arm);
-        gripper.write(0);
+        gripper.write(60);
       }
       else {
         stopMotors();
-        desiredTime = millis() + 1000;
+        desiredTime = millis() + 1500;
         arm.write(90);
         pickupState = grip;
       }
@@ -231,7 +258,7 @@ void pickupFunction() {
         gripper.write(180);
       }
       else {
-        gripper.write(90);
+        gripper.write(120);
         pickupState = armUp;
       }
 
@@ -255,6 +282,7 @@ void pickupFunction() {
       else {
         runState = navigateDump;
         pickupState = armDownRun;
+        turnedAround = false;
       }
       break;
   }
@@ -278,14 +306,15 @@ void navigateDumpFunction() {
       }
       else {
         navigateDumpState = approachDump;
+        desiredTime = millis() + 4000;
       }
       break;
     case approachDump:
       lineFollow();
-      if (digitalRead(bumpSwitch) == LOW) {
+      if ((digitalRead(bumpSwitch) == LOW) || (millis() > desiredTime) ) {
         stopMotors();
         navigateDumpState = findIntersection;
-        
+
         runState = returnRod;
       }
       break;
@@ -307,4 +336,115 @@ void turn90Left() {
   }
 }
 
+void turn90Right() {
+  if (millis() < desiredTime) {
+    driveTurnCenterRight();
+  }
+  else if (analogRead(lineRight) < black) {
+    driveTurnCenterRight();
+  }
+  else {
+    stopMotors();
+    turned90 = true;
+  }
+}
+
+void setDesiredDumpAndSupply() {
+  
+  
+  if (dump1 == true) {
+    desiredDump = 1;
+  }
+  else if (dump2 == true) {
+    desiredDump = 2;
+  }
+  else if (dump3 == true) {
+    desiredDump = 3;
+  }
+  else if (dump4 == true) {
+    desiredDump = 4;
+  }
+  
+  if (supply1 == true) {
+    desiredSupply = 1;
+  }
+  else if (supply2 == true) {
+    desiredSupply = 2;
+  }
+  else if (supply3 == true) {
+    desiredSupply = 3;
+  }
+  else if (supply4 == true) {
+    desiredSupply = 4;
+  }
+}
+
+void determineTurnsAndLineSkips() {
+  if (desiredSupply = desiredDump) {
+    dumpToSupplyTurn = 1;
+  }
+  else if (desiredSupply > desiredDump) {
+    dumpToSupplyTurn = 0;
+  }
+  else {
+    dumpToSupplyTurn = 2;
+  }
+  dumpToSupplyLineSkips = desiredSupply - desiredDump;
+  absDumpToSupplyLineSkips = abs(dumpToSupplyLineSkips);
+  runState = navigateReactor;
+}
+
+void returnRodFunction() {
+  switch (returnRodState) {
+    case armInsertRun:
+      if (analogRead(pot) < armInsert) {
+        setpoint = armInsert;
+        inputValue = analogRead(pot);
+        pid.Compute();
+        drive(-outputValue, arm);
+        
+      }
+      else {
+        stopMotors();
+        desiredTime = millis() + 150;
+        arm.write(90);
+        returnRodState = releaseGrip;
+      }
+      break;
+    case releaseGrip:
+      if (millis() < desiredTime) {
+        gripper.write(0);
+        driveBack();
+        
+      }
+      else {
+        stopMotors();
+        gripper.write(90);
+        returnRodState = armBackRun;
+      }
+
+      break;
+    case armBackRun:
+      if (analogRead(pot) > armBack) {
+        setpoint = armBack;
+        inputValue = analogRead(pot);
+        pid.Compute();
+        drive(-outputValue, arm);
+      }
+      else {
+        arm.write(90);
+        returnRodState = turnAroundRunDump;
+      }
+      break;
+    case turnAroundRunDump:
+      if (!turnedAround) {
+        turnAround();
+      }
+      else {
+        runState = navigateNewRod;
+        returnRodState = armInsertRun;
+      }
+      break;
+  }
+}
 
