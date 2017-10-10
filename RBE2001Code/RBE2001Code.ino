@@ -48,10 +48,11 @@ const int lineRight = A2;
 const int lineBackL = A3;
 const int lineBackR = A5;
 const int pot = A4;
+const int LEDS = 13;
 const int  bumpSwitch = 29;
 const int black = 500;
 const int armBack = 38;
-const int armDown = 400;
+const int armDown = 385;
 const int armInsert = 115;
 const int armInsertReactor = 340;
 const int armPickupVal = 70;
@@ -242,8 +243,18 @@ void driveTurnCenterLeft() {
   rightmotor.write(30);
 }
 void driveBack() {
-  leftmotor.write(0);
-  rightmotor.write(168);
+  if ((analogRead(lineBackL) > black) && (analogRead(lineBackR) < black)) {
+    leftmotor.write(90);
+    rightmotor.write(180);
+  }
+  else if ((analogRead(lineBackR) > black) && (analogRead(lineBackL) < black)) {
+    leftmotor.write(0);
+    rightmotor.write(90);
+  }
+  else {
+    leftmotor.write(0);
+    rightmotor.write(178);
+  }
 }
 
 void driveBackSlow() {
