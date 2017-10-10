@@ -37,6 +37,7 @@ bool firstReactor = true;
 
 int dumpToSupplyTurn; //0 is left, 1 is no turn, 2 is right turn
 int dumpToSupplyLineSkips;
+//V1
 int absDumpToSupplyLineSkips;
 int n;
 int desiredDump;
