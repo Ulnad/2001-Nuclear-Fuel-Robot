@@ -8,13 +8,13 @@ Servo arm;
 Servo gripper;
 
 bool dump1 = false;
-bool dump2 = false ;
-bool dump3 = true ;
+bool dump2 = true ;
+bool dump3 = false ;
 bool dump4 = true;
-bool supply1 = true ;
-bool supply2 = false;
+bool supply1 = false ;
+bool supply2 = true;
 bool supply3 = false;
-bool supply4 = false;
+bool supply4 = true;
 
 
 bool backOnWhite = true;
@@ -39,7 +39,7 @@ int black = 700;
 int armBack = 38;
 int armDown = 380;
 int armInsert = 115;
-int armPickupVal = 55;
+int armPickupVal = 50;
 int Kp = 1000;
 int Ki = 0;
 int Kd = 0;
@@ -63,7 +63,7 @@ static enum getNewRodStates {armRetrieveRun, closeGrip, armReverseRun, turnAroun
 getNewRodState;
 static enum navigateSupplyToReactorStates {goToCenterLine, turnToReactor, moveToReactor}
 navigateSupplyToReactorState;
-static enum putDownStates {correctDistance, moveArmDown, releaseGripper, moveArmUp, turnAroundAfterDrop}
+static enum putDownStates {wait, correctDistance, moveArmDown, releaseGripper, moveArmUp, turnAroundAfterDrop}
 putDownState;
 
 
@@ -122,7 +122,7 @@ void runRobot() {
       pickupFunction();
       break;
     case putDown:
-putDownFunction();
+      putDownFunction();
       break;
     case returnRod:
 
@@ -142,7 +142,11 @@ void loop() {
   //gripper.write(60);
   runRobot();
   //moveToIntersection(4);
+  Serial.print(desiredDump);
+  Serial.print("    ");
   Serial.print(desiredSupply);
+  Serial.print("    ");
+  Serial.print(dumpToSupplyTurn);
   Serial.print("    ");
   Serial.println(absDumpToSupplyLineSkips);
 
@@ -183,7 +187,7 @@ void driveBack() {
 
 void driveBackSlow() {
   leftmotor.write(60);
-  rightmotor.write(120);
+  rightmotor.write(125);
 }
 
 void driveLeft() {
@@ -491,10 +495,10 @@ void navigateNewRodFunction() {
     case turnOnCenterLine:
 
       if (!turned90) {
-        if (dumpToSupplyTurn = 0) {
+        if (dumpToSupplyTurn == 0) {
           turn90Left();
         }
-        else if (dumpToSupplyTurn = 2) {
+        else if (dumpToSupplyTurn == 2) {
           turn90Right();
         }
         else {
@@ -519,10 +523,10 @@ void navigateNewRodFunction() {
       break;
     case turnToSupply:
       if (!turned90) {
-        if (dumpToSupplyTurn = 2) {
+        if (dumpToSupplyTurn == 2) {
           turn90Left();
         }
-        else if (dumpToSupplyTurn = 1) {
+        else if (dumpToSupplyTurn == 0) {
           turn90Right();
         }
       }
@@ -625,29 +629,81 @@ void navigateSupplyToReactorFunction() {
       if (digitalRead(bumpSwitch) == LOW) {
         stopMotors();
         runState = putDown;
+        navigateSupplyToReactorState = goToCenterLine;
+        desiredTime = millis()+ 500;
       }
       break;
   }
 }
 
 //correctDistance, moveArmDown, releaseGripper, moveArmUp, turnAroundAfterDrop
-void putDownFunction(){
-  switch (putDownState){
+void putDownFunction() {
+  switch (putDownState) {
+    case wait:
+if (millis() < desiredTime) {
+        
+      }
+      else{
+       
+        putDownState = correctDistance;
+        desiredTime = millis() + 100;
+      }
+    break;
     case correctDistance:
-
-    break;
+      if (millis() < desiredTime) {
+        driveBack();
+      }
+      else {
+        stopMotors();
+        putDownState = moveArmDown;
+      }
+      break;
     case moveArmDown:
+      if (analogRead(pot) < armDown) {
+        setpoint = armDown;
+        inputValue = analogRead(pot);
+        pid.Compute();
+        drive(-outputValue, arm);
 
-    break;
+      }
+      else {
+        stopMotors();
+        desiredTime = millis() + 1500;
+        arm.write(90);
+        putDownState = releaseGripper;
+      }
+      break;
     case releaseGripper:
-
-    break;
+      if (millis() < desiredTime) {
+        gripper.write(0);
+      }
+      else {
+        gripper.write(90);
+        putDownState = moveArmUp;
+      }
+      break;
     case moveArmUp:
-
-    break;
+      if (analogRead(pot) > armBack) {
+        setpoint = armBack;
+        inputValue = analogRead(pot);
+        pid.Compute();
+        drive(-outputValue, arm);
+      }
+      else {
+        arm.write(90);
+      putDownState = turnAroundAfterDrop;
+      }
+      break;
     case turnAroundAfterDrop:
-
-    break;
+      if (!turnedAround) {
+        turnAround();
+      }
+      else {
+        runState = finished;
+        turnedAround = false;
+        returnRodState = armInsertRun;
+      }
+      break;
   }
 }
 
