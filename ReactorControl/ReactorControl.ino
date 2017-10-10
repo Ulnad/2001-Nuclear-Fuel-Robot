@@ -46,6 +46,7 @@ void loop() {
       initializeMem++;
     }
     else{
+      msg.printMessage();
       Serial.print("stopped:");
       Serial.print(msg.isStopped());
       Serial.print("  Dump:");
@@ -58,7 +59,7 @@ void loop() {
     if(dataCounter >= 4){
       dataCounter = 0;
       msg.sendRadiation(radRodFull);
-      msg.sendRobotStatus(1,3,0);
+      msg.sendRobotStatus(0x02,0x01,0x04);
     }
     else{
       dataCounter++;

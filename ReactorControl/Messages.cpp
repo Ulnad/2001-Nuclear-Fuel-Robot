@@ -82,10 +82,14 @@ void Messages::updateFieldMem(){
       supply = comms.getMessageByte(3);
       break;
     case 4:
+      if(comms.getMessageByte(2)==0x00){
       stopped = true;
+      }
       break;
     case 5:
+      if(comms.getMessageByte(2)==0x00){
       stopped = false;
+      }
       break;
   }
 }
