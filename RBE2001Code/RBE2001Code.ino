@@ -8,12 +8,12 @@ Servo arm;
 Servo gripper;
 
 bool dump1 = false;
-bool dump2 = true ;
-bool dump3 = false ;
+bool dump2 = false ;
+bool dump3 = true ;
 bool dump4 = true;
-bool supply1 = false ;
+bool supply1 = true ;
 bool supply2 = false;
-bool supply3 = true;
+bool supply3 = false;
 bool supply4 = false;
 
 
@@ -37,8 +37,9 @@ int pot = A5;
 int  bumpSwitch = 29;
 int black = 700;
 int armBack = 38;
-int armDown = 400;
+int armDown = 380;
 int armInsert = 115;
+int armPickupVal = 55;
 int Kp = 1000;
 int Ki = 0;
 int Kd = 0;
@@ -46,7 +47,7 @@ long desiredTime;
 double setpoint, inputValue, outputValue;
 PID pid(&inputValue, &outputValue, &setpoint, Kp, Ki, Kd, DIRECT);
 
-static enum runStates {decideNextState, determineBluetooth, navigateReactor, navigateDump, navigateNewRod, pickUp, putDown, returnRod, getNewRod, finished}
+static enum runStates {decideNextState, determineBluetooth, navigateReactor, navigateDump, navigateNewRod, navigateSupplyToReactor, pickUp, putDown, returnRod, getNewRod, finished}
 runState;
 static enum turnAroundStates {setDesiredTime, backUp, skipLine, findLine}
 turnAroundState;
@@ -56,6 +57,14 @@ static enum navigateDumpStates {findIntersection, turnToDump, approachDump}
 navigateDumpState;
 static enum returnRodStates {armInsertRun, releaseGrip, armBackRun, turnAroundRunDump}
 returnRodState;
+static enum navigateNewRodStates {navigateCenterLine, turnOnCenterLine, moveToSupplyRow, turnToSupply, approachSupply}
+navigateNewRodState;
+static enum getNewRodStates {armRetrieveRun, closeGrip, armReverseRun, turnAroundRunSupply}
+getNewRodState;
+static enum navigateSupplyToReactorStates {goToCenterLine, turnToReactor, moveToReactor}
+navigateSupplyToReactorState;
+static enum putDownStates {correctDistance, moveArmDown, releaseGripper, moveArmUp, turnAroundAfterDrop}
+putDownState;
 
 
 void setup() {
@@ -70,6 +79,10 @@ void setup() {
   pickupState = armDownRun;
   turnAroundState = setDesiredTime;
   navigateDumpState = findIntersection;
+  returnRodState = armInsertRun;
+  navigateNewRodState = navigateCenterLine;
+  getNewRodState = armRetrieveRun;
+  navigateSupplyToReactorState = goToCenterLine;
 
   pid.SetMode(AUTOMATIC);
   pid.SetOutputLimits(-90, 90);
@@ -82,14 +95,14 @@ void runRobot() {
 
       break;
     case determineBluetooth:
-desiredDump = 4;
+
       setDesiredDumpAndSupply();
       determineTurnsAndLineSkips();
 
 
       break;
     case navigateReactor:
-   
+
       lineFollow();
       if (digitalRead(bumpSwitch) == LOW) {
         stopMotors();
@@ -100,21 +113,24 @@ desiredDump = 4;
       navigateDumpFunction();
       break;
     case navigateNewRod:
-
+      navigateNewRodFunction();
+      break;
+    case navigateSupplyToReactor:
+      navigateSupplyToReactorFunction();
       break;
     case pickUp:
       pickupFunction();
       break;
     case putDown:
-
+putDownFunction();
       break;
     case returnRod:
 
-    returnRodFunction();
+      returnRodFunction();
 
       break;
     case getNewRod:
-
+      getNewRodFunction();
       break;
     case finished:
 
@@ -126,7 +142,10 @@ void loop() {
   //gripper.write(60);
   runRobot();
   //moveToIntersection(4);
-  //Serial.print(analogRead(pot));
+  Serial.print(desiredSupply);
+  Serial.print("    ");
+  Serial.println(absDumpToSupplyLineSkips);
+
   //Serial.println(desiredDump);
 
 }
@@ -162,6 +181,11 @@ void driveBack() {
   rightmotor.write(180);
 }
 
+void driveBackSlow() {
+  leftmotor.write(60);
+  rightmotor.write(120);
+}
+
 void driveLeft() {
   leftmotor.write(110);
   rightmotor.write(0);
@@ -194,7 +218,7 @@ void turnAround() {
       }
       else {
         stopMotors();
-        desiredTime = millis() + 200;
+        desiredTime = millis() + 500;
         turnAroundState = skipLine;
       }
       break;
@@ -232,6 +256,8 @@ void moveToIntersection (int line) {
   }
   else {
     stopMotors();
+    backOnWhite = true;
+    n = 0;
     intersectionFound = true;
   }
 
@@ -306,6 +332,7 @@ void navigateDumpFunction() {
       }
       else {
         navigateDumpState = approachDump;
+        turned90 = false;
         desiredTime = millis() + 4000;
       }
       break;
@@ -350,8 +377,8 @@ void turn90Right() {
 }
 
 void setDesiredDumpAndSupply() {
-  
-  
+
+
   if (dump1 == true) {
     desiredDump = 1;
   }
@@ -364,7 +391,7 @@ void setDesiredDumpAndSupply() {
   else if (dump4 == true) {
     desiredDump = 4;
   }
-  
+
   if (supply1 == true) {
     desiredSupply = 1;
   }
@@ -377,10 +404,11 @@ void setDesiredDumpAndSupply() {
   else if (supply4 == true) {
     desiredSupply = 4;
   }
+
 }
 
 void determineTurnsAndLineSkips() {
-  if (desiredSupply = desiredDump) {
+  if (desiredSupply == desiredDump) {
     dumpToSupplyTurn = 1;
   }
   else if (desiredSupply > desiredDump) {
@@ -402,7 +430,7 @@ void returnRodFunction() {
         inputValue = analogRead(pot);
         pid.Compute();
         drive(-outputValue, arm);
-        
+
       }
       else {
         stopMotors();
@@ -415,7 +443,7 @@ void returnRodFunction() {
       if (millis() < desiredTime) {
         gripper.write(0);
         driveBack();
-        
+
       }
       else {
         stopMotors();
@@ -442,9 +470,184 @@ void returnRodFunction() {
       }
       else {
         runState = navigateNewRod;
+        turnedAround = false;
         returnRodState = armInsertRun;
       }
       break;
+  }
+}
+void navigateNewRodFunction() {
+  switch (navigateNewRodState) {
+    case navigateCenterLine:
+      if (!intersectionFound) {
+        moveToIntersection(1);
+      }
+      else {
+        intersectionFound = false;
+        navigateNewRodState = turnOnCenterLine;
+        desiredTime = millis() + 300;
+      }
+      break;
+    case turnOnCenterLine:
+
+      if (!turned90) {
+        if (dumpToSupplyTurn = 0) {
+          turn90Left();
+        }
+        else if (dumpToSupplyTurn = 2) {
+          turn90Right();
+        }
+        else {
+          navigateNewRodState = approachSupply;
+          desiredTime = millis() + 3500;
+        }
+      }
+      else {
+        turned90 = false;
+        navigateNewRodState = moveToSupplyRow;
+      }
+
+      break;
+    case moveToSupplyRow:
+      if (!intersectionFound) {
+        moveToIntersection(absDumpToSupplyLineSkips + 1);
+      }
+      else {
+        intersectionFound = false;
+        navigateNewRodState = turnToSupply;
+      }
+      break;
+    case turnToSupply:
+      if (!turned90) {
+        if (dumpToSupplyTurn = 2) {
+          turn90Left();
+        }
+        else if (dumpToSupplyTurn = 1) {
+          turn90Right();
+        }
+      }
+      else {
+        turned90 = false;
+        navigateNewRodState = approachSupply;
+        desiredTime = millis() + 3500;
+      }
+      break;
+    case approachSupply:
+      lineFollow();
+      gripper.write(60);
+      if ((digitalRead(bumpSwitch) == LOW) || (millis() > desiredTime) ) {
+        stopMotors();
+        navigateNewRodState = navigateCenterLine;
+        gripper.write(90);
+
+        runState = getNewRod;
+      }
+      break;
+  }
+}
+void getNewRodFunction() {
+  switch (getNewRodState) {
+    case armRetrieveRun:
+      if (analogRead(pot) < armPickupVal) {
+        setpoint = armPickupVal;
+        inputValue = analogRead(pot);
+        pid.Compute();
+        drive(-outputValue, arm);
+
+      }
+      else {
+        stopMotors();
+        desiredTime = millis() + 1200;
+        arm.write(90);
+        getNewRodState = closeGrip;
+      }
+      break;
+    case closeGrip:
+      if (millis() < desiredTime) {
+        gripper.write(180);
+        //driveBack();
+
+      }
+      else {
+        stopMotors();
+        gripper.write(110);
+        getNewRodState = armReverseRun;
+      }
+      break;
+    case armReverseRun:
+      if (analogRead(pot) > armBack) {
+        setpoint = armBack;
+        inputValue = analogRead(pot);
+        pid.Compute();
+        drive(-outputValue, arm);
+      }
+      else {
+        arm.write(90);
+        getNewRodState = turnAroundRunSupply;
+      }
+      break;
+    case turnAroundRunSupply:
+      if (!turnedAround) {
+        turnAround();
+      }
+      else {
+        runState = navigateSupplyToReactor;
+        turnedAround = false;
+        getNewRodState = armRetrieveRun;
+      }
+      break;
+  }
+}
+
+void navigateSupplyToReactorFunction() {
+  switch (navigateSupplyToReactorState) {
+    case goToCenterLine:
+      if (!intersectionFound) {
+        moveToIntersection(1);
+      }
+      else {
+        intersectionFound = false;
+        navigateSupplyToReactorState = turnToReactor;
+        desiredTime = millis() + 300;
+      }
+      break;
+    case turnToReactor:
+      if (!turned90) {
+        turn90Left();
+      }
+      else {
+        turned90 = true;
+        navigateSupplyToReactorState = moveToReactor;
+      }
+      break;
+    case moveToReactor:
+      lineFollow();
+      if (digitalRead(bumpSwitch) == LOW) {
+        stopMotors();
+        runState = putDown;
+      }
+      break;
+  }
+}
+
+//correctDistance, moveArmDown, releaseGripper, moveArmUp, turnAroundAfterDrop
+void putDownFunction(){
+  switch (putDownState){
+    case correctDistance:
+
+    break;
+    case moveArmDown:
+
+    break;
+    case releaseGripper:
+
+    break;
+    case moveArmUp:
+
+    break;
+    case turnAroundAfterDrop:
+
+    break;
   }
 }
 
