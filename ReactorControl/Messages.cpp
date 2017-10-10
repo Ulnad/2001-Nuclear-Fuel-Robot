@@ -41,7 +41,21 @@ bool Messages::isStopped() {
  * timing can easily be done in the loop() function of your program.
  */
 void Messages::sendHeartbeat() {
-	comms.writeMessage(kHeartbeat, 0x0a, 0x00);
+	comms.writeMessage(kHeartbeat, 0x08, 0x00);
+}
+
+void Messages::sendRadiation(bool f){
+  if(f){
+    comms.writeDataMessage(kRadiationAlert, 0x08, 0x00,0xFF);
+  }
+  else{
+    comms.writeDataMessage(kRadiationAlert, 0x08, 0x00,0x2C);
+  }
+  
+}
+
+void Messages::sendRobotStatus(byte s1, byte s2, byte s3){
+  comms.writeDataMessage3(kRobotStatus, 0x08, 0x00,s1,s2,s3);
 }
 
 /**
@@ -55,6 +69,33 @@ void Messages::printMessage() {
       Serial.print(" ");
     }
     Serial.println();
+}
+
+void Messages::updateFieldMem(){
+  currentByte = comms.getMessageByte(0);
+
+  switch (currentByte){
+    case 1:
+      dump = comms.getMessageByte(3);
+      break;
+    case 2:
+      supply = comms.getMessageByte(3);
+      break;
+    case 4:
+      stopped = true;
+      break;
+    case 5:
+      stopped = false;
+      break;
+  }
+}
+
+byte Messages::getSupply(){
+  return supply;
+}
+
+byte Messages::getDump(){
+  return dump;
 }
 
 /**
@@ -87,7 +128,4 @@ bool Messages::read() {
 	return false;
 }
 
-unsigned char Messages::getStorageAvailability(){
-  return kStorageAvailability;
-}
 

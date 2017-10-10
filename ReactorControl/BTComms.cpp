@@ -41,6 +41,28 @@ void BTComms::setup() {
   Serial3.write(0xff - (opcode + source + dest + 5));
 }
 
+void BTComms::writeDataMessage(unsigned char opcode, unsigned char source, unsigned char dest, unsigned char dataIn){
+  Serial3.write(kMessageStart);
+  Serial3.write(6);
+  Serial3.write(opcode);
+  Serial3.write(source);
+  Serial3.write(dest);
+  Serial3.write(dataIn);
+  Serial3.write(0xff - (opcode + source + dest + 6 + dataIn));
+}
+
+void BTComms::writeDataMessage3(unsigned char opcode, unsigned char source, unsigned char dest, unsigned char dataIn1, unsigned char dataIn2, unsigned char dataIn3){
+  Serial3.write(kMessageStart);
+  Serial3.write(8);
+  Serial3.write(opcode);
+  Serial3.write(source);
+  Serial3.write(dest);
+  Serial3.write(dataIn1);
+  Serial3.write(dataIn2);
+  Serial3.write(dataIn3);
+  Serial3.write(0xff - (opcode + source + dest + 8 + dataIn1 + dataIn2 + dataIn3));
+}
+
 /**
  * Get the length of the currently received message
  * @returns int The number of bytes in the received message

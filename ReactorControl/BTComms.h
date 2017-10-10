@@ -18,6 +18,8 @@ class BTComms {
     unsigned char getMessageByte(unsigned index);
     bool read();
     void writeMessage(unsigned char b1, unsigned char b2, unsigned char b3);
+    void writeDataMessage(unsigned char b1, unsigned char b2, unsigned char b3, unsigned char b4);
+    void writeDataMessage3(unsigned char b1, unsigned char b2, unsigned char b3, unsigned char b4, unsigned char b5, unsigned char b6);
    private:
     enum BTstate {kLookingForStart, kReadingMessageLength, kReadMessage} BTstate;
     unsigned messageLength;

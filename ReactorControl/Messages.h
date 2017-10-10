@@ -42,13 +42,20 @@ public:
 
 	bool isStopped();
 	void sendHeartbeat();
+  void sendRadiation(bool f);
+  void sendRobotStatus(byte s1, byte s2, byte s3);
 	bool read();
 	void setup();
 	void printMessage();
-  unsigned char getStorageAvailability();
+  byte getSupply();
+  byte getDump();
+  void updateFieldMem();
 
 private:
 	bool stopped;
+  byte supply = B11111;
+  byte dump = B11111;
+  byte currentByte;
 };
 
 #endif /* MESSAGES_H_ */

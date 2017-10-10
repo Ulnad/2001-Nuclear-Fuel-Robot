@@ -3,6 +3,9 @@
 
 Messages msg;
 unsigned long timeForHeartbeat;
+int initializeMem = 0;
+int dataCounter = 0;
+bool radRodFull;
 
 /**
  * This "starter" program reads and debug-prints messages from the field. It also sends
@@ -21,6 +24,7 @@ void setup() {
   Serial.println("Starting");
   msg.setup();
   timeForHeartbeat = millis() + 1000;
+  radRodFull = true;
 }
 
 /**
@@ -37,13 +41,27 @@ void setup() {
  */
 void loop() {
   if (msg.read()) {
-	  msg.printMessage();
-    if(msg.isStopped()){
-      Serial.println("ROBOT STOPPED");
+	  msg.updateFieldMem();
+    if(initializeMem < 3){
+      initializeMem++;
+    }
+    else{
+      Serial.print("stopped:");
+      Serial.print(msg.isStopped());
+      Serial.print("  Dump:");
+      Serial.println(msg.getDump());
     }
   }
   if (millis() > timeForHeartbeat) {
     timeForHeartbeat = millis() + 1000;
     msg.sendHeartbeat();
+    if(dataCounter >= 4){
+      dataCounter = 0;
+      msg.sendRadiation(radRodFull);
+      msg.sendRobotStatus(1,3,0);
+    }
+    else{
+      dataCounter++;
+    }
   }
 }
