@@ -1,3 +1,5 @@
+#include "Arduino.h"
+#include "Messages.h"
 #include <Servo.h>
 #include <PID_v1.h>
 
@@ -7,13 +9,21 @@ Servo leftmotor; // Servo object
 Servo arm;
 Servo gripper;
 
+Messages msg;
+unsigned long timeForHeartbeat;
+int initializeMem = 0;
+int dataCounter = 0;
+bool radRodFull;
+bool sendRad = false;
+bool stopRobot = true;
+
 bool dump1 = false;
-bool dump2 = true ;
-bool dump3 = false ;
-bool dump4 = true;
-bool supply1 = false ;
+bool dump2 = false;
+bool dump3 = false;
+bool dump4 = false;
+bool supply1 = true;
 bool supply2 = true;
-bool supply3 = false;
+bool supply3 = true;
 bool supply4 = true;
 
 
@@ -22,6 +32,8 @@ bool turnedAround = false;
 bool grabbed = false;
 bool intersectionFound = false;
 bool turned90 = false;
+bool firstReactor = true;
+
 
 int dumpToSupplyTurn; //0 is left, 1 is no turn, 2 is right turn
 int dumpToSupplyLineSkips;
@@ -29,18 +41,19 @@ int absDumpToSupplyLineSkips;
 int n;
 int desiredDump;
 int desiredSupply;
-int lineCounter = A0;
-int lineLeft = A1;
-int lineRight = A2;
-int lineBack = A3;
-int pot = A5;
-int  bumpSwitch = 29;
-int black = 700;
-int armBack = 38;
-int armDown = 380;
-int armInsert = 115;
-int armPickupVal = 50;
-int Kp = 1000;
+const int lineCounter = A0;
+const int lineLeft = A1;
+const int lineRight = A2;
+const int lineBack = A3;
+const int pot = A5;
+const int  bumpSwitch = 29;
+const int black = 500;
+const int armBack = 38;
+const int armDown = 400;
+const int armInsert = 115;
+const int armInsertReactor = 340;
+const int armPickupVal = 70;
+int Kp = 3;
 int Ki = 0;
 int Kd = 0;
 long desiredTime;
@@ -74,7 +87,10 @@ void setup() {
   rightmotor.attach(10, 1000, 2000); // right drive motor pin#, pulse time for 0,pulse time for 180
   arm.attach(9, 1000, 2000);
   gripper.attach(4, 1000, 2000);
-  Serial.begin(9600);
+  Serial.begin(115200);
+  Serial.println("Starting");
+  msg.setup();
+  timeForHeartbeat = millis() + 1000;
   runState = determineBluetooth;
   pickupState = armDownRun;
   turnAroundState = setDesiredTime;
@@ -83,10 +99,11 @@ void setup() {
   navigateNewRodState = navigateCenterLine;
   getNewRodState = armRetrieveRun;
   navigateSupplyToReactorState = goToCenterLine;
+  putDownState = wait;
 
   pid.SetMode(AUTOMATIC);
   pid.SetOutputLimits(-90, 90);
-
+  bluetoothFunction();
 }
 
 void runRobot() {
@@ -95,7 +112,7 @@ void runRobot() {
 
       break;
     case determineBluetooth:
-
+      bluetoothSetBooleans();
       setDesiredDumpAndSupply();
       determineTurnsAndLineSkips();
 
@@ -139,19 +156,61 @@ void runRobot() {
 
 }
 void loop() {
-  //gripper.write(60);
-  runRobot();
+
+
+  if (!firstReactor) {
+    //Serial.print("desired dump = ");
+    //Serial.println(desiredDump);
+  }
+  if (!stopRobot) {
+    runRobot();
+  }
+  else {
+    stopMotors();
+    arm.write(90);
+    gripper.write(90);
+  }
+
+
   //moveToIntersection(4);
-  Serial.print(desiredDump);
-  Serial.print("    ");
-  Serial.print(desiredSupply);
-  Serial.print("    ");
-  Serial.print(dumpToSupplyTurn);
-  Serial.print("    ");
-  Serial.println(absDumpToSupplyLineSkips);
+  //  Serial.print(supply1);
+  //  Serial.print("    ");
+  //  Serial.print(supply2);
+  //  Serial.print("    ");
+  //  Serial.print(supply3);
+  //  Serial.print("    ");
+  //  Serial.println(supply4);
 
   //Serial.println(desiredDump);
+  bluetoothFunction();
+}
 
+void bluetoothFunction() {
+  if (msg.read()) {
+    msg.updateFieldMem();
+    if (initializeMem < 3) {
+      initializeMem++;
+    }
+    else {
+      //msg.printMessage();
+      stopRobot = msg.isStopped();
+    }
+  }
+  if (millis() > timeForHeartbeat) {
+    timeForHeartbeat = millis() + 1000;
+    msg.sendHeartbeat();
+    if (dataCounter >= 4) {
+      dataCounter = 0;
+      if (sendRad) {
+        msg.sendRadiation(radRodFull);
+      }
+
+      //msg.sendRobotStatus(0x02,0x01,0x04);
+    }
+    else {
+      dataCounter++;
+    }
+  }
 }
 
 void lineFollow() {
@@ -167,22 +226,22 @@ void lineFollow() {
 }
 
 void driveStraight() {
-  leftmotor.write(180);
-  rightmotor.write(0);
+  leftmotor.write(150);
+  rightmotor.write(30);
 }
 void driveTurnCenterRight() {
 
-  leftmotor.write(180);
-  rightmotor.write(180);
+  leftmotor.write(150);
+  rightmotor.write(150);
 }
 void driveTurnCenterLeft() {
 
-  leftmotor.write(0);
-  rightmotor.write(0);
+  leftmotor.write(30);
+  rightmotor.write(30);
 }
 void driveBack() {
   leftmotor.write(0);
-  rightmotor.write(180);
+  rightmotor.write(168);
 }
 
 void driveBackSlow() {
@@ -191,13 +250,13 @@ void driveBackSlow() {
 }
 
 void driveLeft() {
-  leftmotor.write(110);
+  leftmotor.write(90);
   rightmotor.write(0);
 }
 
 void driveRight() {
   leftmotor.write(180);
-  rightmotor.write(70);
+  rightmotor.write(90);
 }
 
 void stopMotors() {
@@ -213,7 +272,7 @@ void drive(double speed, Servo motor) {
 void turnAround() {
   switch (turnAroundState) {
     case setDesiredTime:
-      desiredTime = millis() + 1350;
+      desiredTime = millis() + 1300;
       turnAroundState = backUp;
       break;
     case backUp:
@@ -281,6 +340,9 @@ void pickupFunction() {
         desiredTime = millis() + 1500;
         arm.write(90);
         pickupState = grip;
+        radRodFull = false;
+        sendRad = true;
+        msg.sendRadiation(radRodFull);
       }
       break;
     case grip:
@@ -311,6 +373,7 @@ void pickupFunction() {
       }
       else {
         runState = navigateDump;
+        msg.sendRobotStatus(0x02, 0x03, 0x04);
         pickupState = armDownRun;
         turnedAround = false;
       }
@@ -321,7 +384,10 @@ void pickupFunction() {
 void navigateDumpFunction() {
   switch (navigateDumpState) {
     case findIntersection:
+
+
       if (!intersectionFound) {
+
         moveToIntersection(desiredDump);
       }
       else {
@@ -332,12 +398,19 @@ void navigateDumpFunction() {
       break;
     case turnToDump:
       if (!turned90) {
-        turn90Left();
+        if (firstReactor == true)
+          turn90Left();
+        else {
+          turn90Right();
+
+        }
+
+
       }
       else {
         navigateDumpState = approachDump;
         turned90 = false;
-        desiredTime = millis() + 4000;
+        desiredTime = millis() + 7000;
       }
       break;
     case approachDump:
@@ -378,6 +451,70 @@ void turn90Right() {
     stopMotors();
     turned90 = true;
   }
+}
+
+void bluetoothSetBooleans() {
+  int supVal = (int)msg.getSupply();
+  Serial.print("supply");
+  Serial.println(supVal);
+  if ((supVal % 2) == 0) {
+    if (firstReactor)
+      supply4 = false;
+    else
+      supply1 = false;
+  }
+
+  if (((supVal / 2) % 2) == 0) {
+    if (firstReactor)
+      supply3 = false;
+    else
+      supply2 = false;
+  }
+
+  if ((supVal > 7 && supVal < 12) || supVal < 4) {
+    if (firstReactor)
+      supply2 = false;
+    else
+      supply3 = false;
+  }
+
+  if (supVal < 8) {
+    if (firstReactor)
+      supply1 = false;
+    else
+      supply4 = false;
+  }
+  int dumpVal = (int)msg.getDump();
+  Serial.print("dump");
+  Serial.println(dumpVal);
+  if ((dumpVal % 2) == 0) {
+    if (firstReactor)
+      dump4 = true;
+    else
+      dump1 = true;
+  }
+
+  if (((dumpVal / 2) % 2) == 0) {
+    if (firstReactor)
+      dump3 = true;
+    else
+      dump2 = true;
+  }
+
+  if ((dumpVal > 7 && dumpVal < 12) || dumpVal < 4) {
+    if (firstReactor)
+      dump2 = true;
+    else
+      dump3 = true;
+  }
+
+  if (dumpVal < 8) {
+    if (firstReactor)
+      dump1 = true;
+    else
+      dump4 = true;
+  }
+
 }
 
 void setDesiredDumpAndSupply() {
@@ -437,6 +574,8 @@ void returnRodFunction() {
 
       }
       else {
+        radRodFull = false;
+        sendRad = false;
         stopMotors();
         desiredTime = millis() + 150;
         arm.write(90);
@@ -496,10 +635,16 @@ void navigateNewRodFunction() {
 
       if (!turned90) {
         if (dumpToSupplyTurn == 0) {
-          turn90Left();
+          if (firstReactor)
+            turn90Left();
+          else
+            turn90Right();
         }
         else if (dumpToSupplyTurn == 2) {
-          turn90Right();
+          if (firstReactor)
+            turn90Right();
+          else
+            turn90Left();
         }
         else {
           navigateNewRodState = approachSupply;
@@ -514,20 +659,39 @@ void navigateNewRodFunction() {
       break;
     case moveToSupplyRow:
       if (!intersectionFound) {
-        moveToIntersection(absDumpToSupplyLineSkips + 1);
+        if (dumpToSupplyTurn == 0) {
+          if (firstReactor)
+            moveToIntersection(absDumpToSupplyLineSkips);
+          else
+            moveToIntersection(absDumpToSupplyLineSkips + 1);
+        }
+        else {
+          if (firstReactor)
+            moveToIntersection(absDumpToSupplyLineSkips + 1);
+          else
+            moveToIntersection(absDumpToSupplyLineSkips);
+
+        }
       }
       else {
         intersectionFound = false;
         navigateNewRodState = turnToSupply;
+        desiredTime = millis() + 300;
       }
       break;
     case turnToSupply:
       if (!turned90) {
         if (dumpToSupplyTurn == 2) {
-          turn90Left();
+          if (firstReactor)
+            turn90Left();
+          else
+            turn90Right();
         }
         else if (dumpToSupplyTurn == 0) {
-          turn90Right();
+          if (firstReactor)
+            turn90Right();
+          else
+            turn90Left();
         }
       }
       else {
@@ -557,13 +721,15 @@ void getNewRodFunction() {
         inputValue = analogRead(pot);
         pid.Compute();
         drive(-outputValue, arm);
-
       }
       else {
         stopMotors();
         desiredTime = millis() + 1200;
         arm.write(90);
         getNewRodState = closeGrip;
+        radRodFull = true;
+        sendRad = true;
+        msg.sendRadiation(radRodFull);
       }
       break;
     case closeGrip:
@@ -617,7 +783,10 @@ void navigateSupplyToReactorFunction() {
       break;
     case turnToReactor:
       if (!turned90) {
-        turn90Left();
+        if (firstReactor)
+          turn90Left();
+        else
+          turn90Right();
       }
       else {
         turned90 = true;
@@ -630,7 +799,7 @@ void navigateSupplyToReactorFunction() {
         stopMotors();
         runState = putDown;
         navigateSupplyToReactorState = goToCenterLine;
-        desiredTime = millis()+ 500;
+        desiredTime = millis() + 500;
       }
       break;
   }
@@ -640,18 +809,19 @@ void navigateSupplyToReactorFunction() {
 void putDownFunction() {
   switch (putDownState) {
     case wait:
-if (millis() < desiredTime) {
-        
+      if (millis() < desiredTime) {
+
       }
-      else{
-       
+      else {
+
         putDownState = correctDistance;
         desiredTime = millis() + 100;
       }
-    break;
+      break;
     case correctDistance:
-      if (millis() < desiredTime) {
-        driveBack();
+      if (digitalRead(bumpSwitch) == LOW) {
+        leftmotor.write(69);
+        rightmotor.write(117);
       }
       else {
         stopMotors();
@@ -659,7 +829,8 @@ if (millis() < desiredTime) {
       }
       break;
     case moveArmDown:
-      if (analogRead(pot) < armDown) {
+      if (analogRead(pot) < armInsertReactor) {
+
         setpoint = armDown;
         inputValue = analogRead(pot);
         pid.Compute();
@@ -671,6 +842,8 @@ if (millis() < desiredTime) {
         desiredTime = millis() + 1500;
         arm.write(90);
         putDownState = releaseGripper;
+        radRodFull = true;
+        sendRad = false;
       }
       break;
     case releaseGripper:
@@ -691,7 +864,7 @@ if (millis() < desiredTime) {
       }
       else {
         arm.write(90);
-      putDownState = turnAroundAfterDrop;
+        putDownState = turnAroundAfterDrop;
       }
       break;
     case turnAroundAfterDrop:
@@ -699,8 +872,41 @@ if (millis() < desiredTime) {
         turnAround();
       }
       else {
-        runState = finished;
+        if (firstReactor) {
+
+          firstReactor = false;
+          dump1 = false;
+          dump2 = false;
+          dump3 = false;
+          dump4 = false;
+          supply1 = true;
+          supply2 = true;
+          supply3 = true;
+          supply4 = true;
+          turnedAround = false;
+
+          runState = determineBluetooth;
+          pickupState = armDownRun;
+          turnAroundState = setDesiredTime;
+          navigateDumpState = findIntersection;
+          returnRodState = armInsertRun;
+          navigateNewRodState = navigateCenterLine;
+          getNewRodState = armRetrieveRun;
+          navigateSupplyToReactorState = goToCenterLine;
+          putDownState = wait;
+          backOnWhite = true;
+          turnedAround = false;
+          grabbed = false;
+          intersectionFound = false;
+          turned90 = false;
+          n = 0;
+        }
+        else {
+          runState = finished;
+        }
         turnedAround = false;
+        intersectionFound = false;
+
         returnRodState = armInsertRun;
       }
       break;
