@@ -13,6 +13,8 @@ Messages msg;
 unsigned long timeForHeartbeat;
 int initializeMem = 0;
 int dataCounter = 0;
+bool lowRad = false;
+bool highRad = false;
 bool radRodFull;
 bool sendRad = false;
 bool stopRobot = true;
@@ -26,7 +28,7 @@ bool supply2 = true;
 bool supply3 = true;
 bool supply4 = true;
 
-
+bool up = false;
 bool backOnWhite = true;
 bool turnedAround = false;
 bool grabbed = false;
@@ -34,6 +36,9 @@ bool intersectionFound = false;
 bool turned90 = false;
 bool firstReactor = true;
 
+const int ledFlashLength = 120;
+const int ledLength = 10;
+int ledTime;
 
 int dumpToSupplyTurn; //0 is left, 1 is no turn, 2 is right turn
 int dumpToSupplyLineSkips;
@@ -42,17 +47,20 @@ int absDumpToSupplyLineSkips;
 int n;
 int desiredDump;
 int desiredSupply;
+int brightness = 255;
+int ledBrightness = 0;
 const int lineCounter = A0;
 const int lineLeft = A1;
 const int lineRight = A2;
 const int lineBackL = A3;
 const int lineBackR = A5;
 const int pot = A4;
+const int estop = 23;
 const int LEDS = 13;
-const int  bumpSwitch = 29;
+const int bumpSwitch = 29;
 const int black = 500;
 const int armBack = 38;
-const int armDown = 385;
+const int armDown = 395;
 const int armInsert = 115;
 const int armInsertReactor = 340;
 const int armPickupVal = 70;
@@ -85,6 +93,8 @@ putDownState;
 
 void setup() {
   // put your setup code here, to run once:
+  pinMode(estop, INPUT_PULLUP);
+  pinMode(LEDS, OUTPUT);
   pinMode(bumpSwitch, INPUT_PULLUP);
   leftmotor.attach(11, 1000, 2000); // left drive motor pin#, pulse time for 0,pulse time for 180
   rightmotor.attach(10, 1000, 2000); // right drive motor pin#, pulse time for 0,pulse time for 180
@@ -107,6 +117,7 @@ void setup() {
   pid.SetMode(AUTOMATIC);
   pid.SetOutputLimits(-90, 90);
   bluetoothFunction();
+  analogWrite(LEDS, 0);
 }
 
 void runRobot() {
@@ -159,20 +170,33 @@ void runRobot() {
 
 }
 void loop() {
-
-
-  if (!firstReactor) {
-    //Serial.print("desired dump = ");
-    //Serial.println(desiredDump);
+  if(digitalRead(estop)==LOW){
+    msg.setStopped(true);
+    Serial.print("AHHHHHH");
   }
+
   if (!stopRobot) {
     runRobot();
+    if(sendRad){
+      if(radRodFull){
+        flash();
+      }
+      else{
+        pulse();
+      }
+    }
+    else{
+      brightness = 70;
+    }
   }
   else {
     stopMotors();
     arm.write(90);
     gripper.write(90);
+    brightness = 0;
   }
+  
+  
 
 
   //moveToIntersection(4);
@@ -356,6 +380,7 @@ void pickupFunction() {
         radRodFull = false;
         sendRad = true;
         msg.sendRadiation(radRodFull);
+        analogWrite(LEDS, 20);
       }
       break;
     case grip:
@@ -363,7 +388,7 @@ void pickupFunction() {
         gripper.write(180);
       }
       else {
-        gripper.write(120);
+        gripper.write(130);
         pickupState = armUp;
       }
 
@@ -468,8 +493,8 @@ void turn90Right() {
 
 void bluetoothSetBooleans() {
   int supVal = (int)msg.getSupply();
-  Serial.print("supply");
-  Serial.println(supVal);
+  //Serial.print("supply");
+  //Serial.println(supVal);
   if ((supVal % 2) == 0) {
     if (firstReactor)
       supply4 = false;
@@ -498,8 +523,8 @@ void bluetoothSetBooleans() {
       supply4 = false;
   }
   int dumpVal = (int)msg.getDump();
-  Serial.print("dump");
-  Serial.println(dumpVal);
+  //Serial.print("dump");
+  //Serial.println(dumpVal);
   if ((dumpVal % 2) == 0) {
     if (firstReactor)
       dump4 = true;
@@ -589,6 +614,7 @@ void returnRodFunction() {
       else {
         radRodFull = false;
         sendRad = false;
+        analogWrite(LEDS, 0);
         stopMotors();
         desiredTime = millis() + 150;
         arm.write(90);
@@ -742,6 +768,7 @@ void getNewRodFunction() {
         getNewRodState = closeGrip;
         radRodFull = true;
         sendRad = true;
+        analogWrite(LEDS, 255);
         msg.sendRadiation(radRodFull);
       }
       break;
@@ -753,7 +780,7 @@ void getNewRodFunction() {
       }
       else {
         stopMotors();
-        gripper.write(110);
+        gripper.write(130);
         getNewRodState = armReverseRun;
       }
       break;
@@ -818,6 +845,42 @@ void navigateSupplyToReactorFunction() {
   }
 }
 
+void pulse(){
+  if(brightness > 255 || brightness < 0)
+    brightness = 100;
+  if(millis() > ledTime+ledLength){
+    if(brightness >= 255){
+      up = false;
+    }
+    else if(brightness <= 0){
+      up = true;
+    }
+    if(up){
+      brightness += 4;
+    }
+
+    else{
+      brightness -= 4;
+    }
+    ledTime = millis();
+  }
+}
+
+void flash(){
+  if(brightness != 255 && brightness != 0){
+    brightness = 255;
+  }
+  if(millis() > (ledTime+ledFlashLength)){
+    if(brightness == 255){
+      brightness = 0;
+    }
+    else{
+      brightness = 255;
+    }
+    ledTime = millis();
+  }
+
+}
 //correctDistance, moveArmDown, releaseGripper, moveArmUp, turnAroundAfterDrop
 void putDownFunction() {
   switch (putDownState) {
@@ -857,6 +920,7 @@ void putDownFunction() {
         putDownState = releaseGripper;
         radRodFull = true;
         sendRad = false;
+        analogWrite(LEDS, 0);
       }
       break;
     case releaseGripper:
