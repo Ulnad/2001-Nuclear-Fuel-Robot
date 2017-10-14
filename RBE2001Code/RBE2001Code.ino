@@ -1,25 +1,31 @@
+/*
+  TEAM 8 2001 Robot Code
+  Main state machine
+  By Danny Lu, Nicoli Liedtke, and David Jin
+*/
+
 #include "Arduino.h"
 #include "Messages.h"
 #include <Servo.h>
-#include <PID_v1.h>
+#include <PID_v1.h> //for Arm
 
 
-Servo rightmotor; // Servo object
-Servo leftmotor; // Servo object
+Servo rightmotor; //Initalize actuators
+Servo leftmotor; 
 Servo arm;
 Servo gripper;
 
 Messages msg;
-unsigned long timeForHeartbeat;
-int initializeMem = 0;
+unsigned long timeForHeartbeat; //heartbeat count
+int initializeMem = 0; //get bluetooth info
 int dataCounter = 0;
-bool lowRad = false;
+bool lowRad = false; //Rad = Radiation
 bool highRad = false;
-bool radRodFull;
-bool sendRad = false;
+bool radRodFull; //true means new rod, false means spent rod
+bool sendRad = false; //Radiation signals
 bool stopRobot = true;
 
-bool dump1 = false;
+bool dump1 = false; //memory for fuel rod positions
 bool dump2 = false;
 bool dump3 = false;
 bool dump4 = false;
@@ -28,17 +34,21 @@ bool supply2 = true;
 bool supply3 = true;
 bool supply4 = true;
 
+//Movement control booleans
 bool up = false;
-bool backOnWhite = true;
+bool backOnWhite = true; //stops counting lines when on black
 bool turnedAround = false;
 bool grabbed = false;
 bool intersectionFound = false;
 bool turned90 = false;
 bool firstReactor = true;
 
+//Underglow LEDS
 const int ledFlashLength = 120;
 const int ledLength = 10;
 int ledTime;
+int brightness = 255;
+int ledBrightness = 0;
 
 int dumpToSupplyTurn; //0 is left, 1 is no turn, 2 is right turn
 int dumpToSupplyLineSkips;
@@ -47,8 +57,8 @@ int absDumpToSupplyLineSkips;
 int n;
 int desiredDump;
 int desiredSupply;
-int brightness = 255;
-int ledBrightness = 0;
+
+//Sensors and Limit values
 const int lineCounter = A0;
 const int lineLeft = A1;
 const int lineRight = A2;
@@ -71,8 +81,10 @@ long desiredTime;
 double setpoint, inputValue, outputValue;
 PID pid(&inputValue, &outputValue, &setpoint, Kp, Ki, Kd, DIRECT);
 
+//Main State Machine
 static enum runStates {decideNextState, determineBluetooth, navigateReactor, navigateDump, navigateNewRod, navigateSupplyToReactor, pickUp, putDown, returnRod, getNewRod, finished}
 runState;
+//Lower Level State Machines
 static enum turnAroundStates {setDesiredTime, backUp, skipLine, findLine}
 turnAroundState;
 static enum pickupStates {armDownRun, grip, armUp, turnAroundRun}
@@ -104,6 +116,8 @@ void setup() {
   Serial.println("Starting");
   msg.setup();
   timeForHeartbeat = millis() + 1000;
+  
+  //Initialize all states
   runState = determineBluetooth;
   pickupState = armDownRun;
   turnAroundState = setDesiredTime;
@@ -121,7 +135,7 @@ void setup() {
 }
 
 void runRobot() {
-  switch (runState) {
+  switch (runState) { //Main state machine
     case decideNextState:
 
       break;
@@ -170,12 +184,12 @@ void runRobot() {
 
 }
 void loop() {
-  if(digitalRead(estop)==LOW){
+  if(digitalRead(estop)==LOW){ //e-stop reader
     msg.setStopped(true);
     Serial.print("AHHHHHH");
   }
 
-  if (!stopRobot) {
+  if (!stopRobot) { //for bluetooth stop and resume
     runRobot();
     if(sendRad){
       if(radRodFull){
@@ -196,23 +210,10 @@ void loop() {
     brightness = 0;
   }
   
-  
-
-
-  //moveToIntersection(4);
-  //  Serial.print(supply1);
-  //  Serial.print("    ");
-  //  Serial.print(supply2);
-  //  Serial.print("    ");
-  //  Serial.print(supply3);
-  //  Serial.print("    ");
-  //  Serial.println(supply4);
-
-  //Serial.println(desiredDump);
   bluetoothFunction();
 }
 
-void bluetoothFunction() {
+void bluetoothFunction() { //Bluetooth initalization and implementation
   if (msg.read()) {
     msg.updateFieldMem();
     if (initializeMem < 3) {
@@ -240,7 +241,7 @@ void bluetoothFunction() {
   }
 }
 
-void lineFollow() {
+void lineFollow() { //Basic line following function
   if ((analogRead(lineLeft) > black) && (analogRead(lineRight) < black)) {
     driveLeft();
   }
@@ -252,21 +253,24 @@ void lineFollow() {
   }
 }
 
-void driveStraight() {
+void driveStraight() { 
   leftmotor.write(150);
   rightmotor.write(30);
 }
+
 void driveTurnCenterRight() {
 
   leftmotor.write(150);
   rightmotor.write(150);
 }
+
 void driveTurnCenterLeft() {
 
   leftmotor.write(30);
   rightmotor.write(30);
 }
-void driveBack() {
+
+void driveBack() { //Line follow backwards
   if ((analogRead(lineBackL) > black) && (analogRead(lineBackR) < black)) {
     leftmotor.write(90);
     rightmotor.write(180);
@@ -306,7 +310,7 @@ void drive(double speed, Servo motor) {
   if (speed < -90) speed = -90;
   motor.write(90 + speed);
 }
-void turnAround() {
+void turnAround() { //Turns around with front line sensor as end point
   switch (turnAroundState) {
     case setDesiredTime:
       desiredTime = millis() + 1300;
@@ -343,7 +347,8 @@ void turnAround() {
       break;
   }
 }
-void moveToIntersection (int line) {
+
+void moveToIntersection (int line) { // skips the amount of lines specified
   if (n != line) {
     lineFollow();
     if (backOnWhite && (analogRead(lineCounter) > black)) {
@@ -362,7 +367,8 @@ void moveToIntersection (int line) {
   }
 
 }
-void pickupFunction() {
+
+void pickupFunction() { //Moves arm down, grips, then up
   switch (pickupState) {
     case armDownRun:
       if (analogRead(pot) < armDown) {
@@ -419,7 +425,7 @@ void pickupFunction() {
   }
 }
 
-void navigateDumpFunction() {
+void navigateDumpFunction() { //Go to nearest open supply area
   switch (navigateDumpState) {
     case findIntersection:
 
@@ -491,7 +497,7 @@ void turn90Right() {
   }
 }
 
-void bluetoothSetBooleans() {
+void bluetoothSetBooleans() { //function for converting bluetooth 
   int supVal = (int)msg.getSupply();
   //Serial.print("supply");
   //Serial.println(supVal);
@@ -555,7 +561,7 @@ void bluetoothSetBooleans() {
 
 }
 
-void setDesiredDumpAndSupply() {
+void setDesiredDumpAndSupply() { //sets variable for line skipping
 
 
   if (dump1 == true) {
@@ -658,7 +664,7 @@ void returnRodFunction() {
       break;
   }
 }
-void navigateNewRodFunction() {
+void navigateNewRodFunction() { //navigates to nearest supply
   switch (navigateNewRodState) {
     case navigateCenterLine:
       if (!intersectionFound) {
@@ -845,6 +851,7 @@ void navigateSupplyToReactorFunction() {
   }
 }
 
+//fun led stuff
 void pulse(){
   if(brightness > 255 || brightness < 0)
     brightness = 100;
@@ -865,7 +872,6 @@ void pulse(){
     ledTime = millis();
   }
 }
-
 void flash(){
   if(brightness != 255 && brightness != 0){
     brightness = 255;
@@ -881,6 +887,7 @@ void flash(){
   }
 
 }
+
 //correctDistance, moveArmDown, releaseGripper, moveArmUp, turnAroundAfterDrop
 void putDownFunction() {
   switch (putDownState) {
@@ -950,7 +957,7 @@ void putDownFunction() {
       }
       else {
         if (firstReactor) {
-
+          //reset all states for reactor B
           firstReactor = false;
           dump1 = false;
           dump2 = false;
